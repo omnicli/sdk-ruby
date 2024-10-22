@@ -1,0 +1,31 @@
+name: Enable automerge on automated pull-requests
+
+on:
+  pull_request_target:
+
+jobs:
+  automerge:
+    name: Enable automerge on automated pull-requests
+
+    runs-on: ubuntu-latest
+
+    if: github.actor == 'dependabot[bot]'
+
+    steps:
+      - name: Create application token
+        uses: actions/create-github-app-token@v1
+        id: app-token
+        env:
+          APP_ID: ${{ secrets.OMNICLI_APP_ID }}
+          PRIVATE_KEY: ${{ secrets.OMNICLI_PRIVATE_KEY }}
+        with:
+          app-id: ${{ env.APP_ID }}
+          private-key: ${{ env.PRIVATE_KEY }}
+
+      - name: Enable auto-merge
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.number }}
+        run: |
+          gh --repo "$REPOSITORY" pr merge --squash --auto --body "" "$PR_NUMBER"

@@ -1,0 +1,271 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+
+    tags:
+      - v*
+
+  pull_request:
+
+  schedule:
+    - cron: "0 0 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  CI: 'true'
+  RUBY_VERSION: '3.3'
+
+jobs:
+  prepare-env:
+    name: Prepare environment
+    runs-on: "ubuntu-latest"
+
+    outputs:
+      requires_tests: ${{ env.REQUIRES_TESTS }}
+      publish_release: ${{ env.PUBLISH_RELEASE }}
+      release_version: ${{ env.RELEASE_VERSION }}
+
+    steps:
+      - name: Check if tests should happen no matter the files
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+        run: |
+          REQUIRES_TESTS=false
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" ]] || \
+             [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" ]] || \
+             [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/tags/v"* ]]; then
+            REQUIRES_TESTS=true
+          fi
+          echo "REQUIRES_TESTS=${REQUIRES_TESTS}" | tee -a "$GITHUB_ENV"
+
+      - name: Checkout current commit
+        uses: "actions/checkout@v4"
+        with:
+          fetch-tags: true
+
+      - name: Get the changed files that would require tests
+        id: changed-files
+        uses: "tj-actions/changed-files@v45"
+        if: ${{ env.REQUIRES_TESTS != 'true' }}
+        with:
+          files_yaml: |
+            source_code:
+              lib/**
+              tests/**
+              .github/workflows/build.yaml
+
+      - name: Identify if testing is required
+        if: ${{ env.REQUIRES_TESTS != 'true' }}
+        env:
+          CHANGED_FILES: ${{ steps.changed-files.outputs.source_code_any_changed }}
+          DELETED_FILES: ${{ steps.changed-files.outputs.source_code_any_deleted }}
+          MODIFIED_FILES: ${{ steps.changed-files.outputs.source_code_any_modified }}
+        run: |
+          REQUIRES_TESTS=false
+          if [[ "$CHANGED_FILES" == "true" ]] || \
+             [[ "$DELETED_FILES" == "true" ]] || \
+             [[ "$MODIFIED_FILES" == "true" ]]; then
+            REQUIRES_TESTS=true
+          fi
+          echo "REQUIRES_TESTS=${REQUIRES_TESTS}" | tee -a "$GITHUB_ENV"
+
+      - name: Check if we need to publish a release
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: |
+          set -e
+
+          # Get last tag starting by `v`
+          last_tag=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo 'null')
+          last_tag_version=${last_tag#v}
+          echo "last_tag_version=${last_tag_version}"
+
+          # Get the version from the VERSION file
+          current_version=$(cat lib/omnicli/VERSION 2>/dev/null || echo '0.0.0')
+          echo "current_version=${current_version}"
+
+          PUBLISH_RELEASE=false
+          if [[ "$last_tag" == "null" ]]; then
+            PUBLISH_RELEASE=true
+          else
+            # Split into major, minor and patch to compare
+            IFS='.' read -r cur_major cur_minor cur_patch <<< "$current_version"
+            IFS='.' read -r last_major last_minor last_patch <<< "$last_tag_version"
+
+            # Verify that current >> last
+            if [[ "$cur_major" -gt "$last_major" ]] || \
+               [[ "$cur_major" -eq "$last_major" && "$cur_minor" -gt "$last_minor" ]] || \
+               [[ "$cur_major" -eq "$last_major" && "$cur_minor" -eq "$last_minor" && "$cur_patch" -gt "$last_patch" ]]; then
+              PUBLISH_RELEASE=true
+              echo "RELEASE_VERSION=${current_version}" | tee -a "$GITHUB_ENV"
+            fi
+          fi
+          echo "PUBLISH_RELEASE=${PUBLISH_RELEASE}" | tee -a "$GITHUB_ENV"
+
+
+  rubocop:
+    name: Checking lint
+    runs-on: ubuntu-latest
+
+    needs:
+      - prepare-env
+
+    if: needs.prepare-env.outputs.requires_tests == 'true'
+
+    env:
+      BUNDLE_ONLY: rubocop
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+
+      - uses: reviewdog/action-rubocop@v2
+        with:
+          reporter: github-pr-check
+          fail-on-error: true
+          skip_install: true
+          use_bundler: true
+
+
+  tests:
+    name: Tests
+    runs-on: "ubuntu-latest"
+
+    needs:
+      - prepare-env
+
+    if: needs.prepare-env.outputs.requires_tests == 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+
+      - name: Install dependencies
+        run: |
+          bundle install --jobs 4 --retry 3 --with test
+
+      - name: Run unit & integration tests
+        run: |
+          bundle exec rspec
+
+
+  results:
+    name: Aggregate test results
+    runs-on: ubuntu-latest
+
+    needs:
+      - rubocop
+      - tests
+
+    if: always()
+
+    steps:
+      - name: Fail if rubocop failed
+        if: needs.rubocop.result == 'failure'
+        run: exit 1
+
+      - name: Fail if tests failed
+        if: needs.tests.result == 'failure'
+        run: exit 1
+
+
+  push-library:
+    name: Push library to RubyGems
+    runs-on: ubuntu-latest
+
+    needs:
+      - prepare-env
+      - results
+
+    if: needs.prepare-env.outputs.publish_release == 'true' && needs.results.result != 'failure'
+
+    environment:
+      name: rubygems
+      url: https://rubygems.org/gems/omnicli
+
+    permissions:
+      # IMPORTANT: this permission is mandatory for trusted publishing
+      id-token: write
+      # IMPORTANT: this permission is required for `rake release` to push the release tag
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 'ruby'
+          bundler-cache: true
+
+      - name: Create version file
+        env:
+          VERSION: ${{ needs.prepare-env.outputs.release_version }}
+        run: |
+          echo "${VERSION}" | tee lib/omnicli/VERSION
+
+      - name: Publish to RubyGems
+        uses: rubygems/release-gem@v1
+
+
+  push-release:
+    name: Release version
+    runs-on: ubuntu-latest
+
+    needs:
+      - prepare-env
+      - push-library
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Create application token
+        uses: actions/create-github-app-token@v1
+        id: app-token
+        env:
+          APP_ID: ${{ secrets.OMNICLI_APP_ID }}
+          PRIVATE_KEY: ${{ secrets.OMNICLI_PRIVATE_KEY }}
+        with:
+          app-id: ${{ env.APP_ID }}
+          private-key: ${{ env.PRIVATE_KEY }}
+
+      - name: Checkout current commit
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Release version
+        uses: ncipollo/release-action@v1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          tag: v${{ needs.prepare-env.outputs.release_version }}
+          name: v${{ needs.prepare-env.outputs.release_version }}
+          generateReleaseNotes: true
+          makeLatest: true
+          skipIfReleaseExists: true
+          # This should allow to fail the release creation
+          # if the release already exists and is not a draft
+          # or pre-release (none of our releases are)
+          allowUpdates: true
+          updateOnlyUnreleased: true
+

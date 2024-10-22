@@ -1,0 +1,73 @@
+up:
+  - ruby
+  - bundle
+
+# env:
+  # PYTHONPATH:
+    # prepend:
+      # - value: lib/
+        # type: path
+
+commands:
+  test:
+    desc: Run all tests
+    run: |
+      set -e
+      omni test lint
+      omni test unit "$@"
+    subcommands:
+      lint:
+        desc: Run lint
+        run: bundle exec rubocop "$@"
+      unit:
+        desc: Run tests
+        run: bundle exec rspec "$@"
+
+  build:
+    desc: Build the package
+    run: |
+      set -eo pipefail
+      # Empty the build directory
+      rm -rf pkg/
+      # Get the latest git tag
+      version=$(git describe --tags --dirty --always)
+      # Check if the version is in a valid format
+      if [[ "${version}" != v* ]]; then
+        version="0.0.0-${version//+/.}"
+      else
+        version="${version#v}"
+      fi
+      # Write the version
+      echo "${version}" > lib/omnicli/VERSION
+      # Build the package
+      bundle exec rake build
+      # Remove the version file
+      rm lib/omnicli/VERSION
+
+  publish:
+    desc: Publish the package
+    run: |
+      set -eo pipefail
+
+      # Get the latest git tag
+      git_version=$(git describe --tags --dirty --always)
+      clean_version=$(git describe --tags --abbrev=0)
+      # Check if the version values are the same
+      if [ "${git_version}" != "${clean_version}" ]; then
+        echo "The current version is not clean."
+        exit 1
+      elif [[ "${git_version}" != v* ]]; then
+        echo "The current version is not a valid tag."
+        exit 1
+      else
+        version="${clean_version#v}"
+      fi
+
+      # Empty the build directory
+      rm -rf pkg/
+      # Write the version
+      echo "${version}" > lib/omnicli/VERSION
+      # Build and release the package
+      bundle exec rake release
+      # Remove the version file
+      rm lib/omnicli/VERSION

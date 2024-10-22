@@ -1,0 +1,120 @@
+name: Release next
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  bump-version:
+    name: Release next
+    runs-on: ubuntu-latest
+
+    if: github.event.ref == 'refs/heads/main'
+
+    steps:
+      - name: Create application token
+        uses: actions/create-github-app-token@v1
+        id: app-token
+        env:
+          APP_ID: ${{ secrets.OMNICLI_APP_ID }}
+          PRIVATE_KEY: ${{ secrets.OMNICLI_PRIVATE_KEY }}
+        with:
+          app-id: ${{ env.APP_ID }}
+          private-key: ${{ env.PRIVATE_KEY }}
+
+      - name: Identify last release commit
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          LAST_RELEASE_TAG=$(gh --repo "${REPOSITORY}" release list --limit 1 --json tagName | jq -r '.[0].tagName')
+          if [[ "$LAST_RELEASE_TAG" != "null" ]]; then
+            PREVIOUS_TAG_SHA=$(gh api "repos/${REPOSITORY}/git/ref/tags/${LAST_RELEASE_TAG}" --jq '.object.sha')
+            echo "PREVIOUS_TAG_SHA=${PREVIOUS_TAG_SHA}" | tee -a "$GITHUB_ENV"
+
+            if [[ -z "$PREVIOUS_TAG_SHA" ]]; then
+              echo >&2 "Failed to identify last release commit"
+              exit 1
+            fi
+          else
+            RELEASE_VERSION="0.0.0"
+            echo "RELEASE_VERSION=${RELEASE_VERSION}" | tee -a "$GITHUB_ENV"
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ env.RELEASE_VERSION != '' && 50 || 1 }}
+          fetch-tags: ${{ env.RELEASE_VERSION != '' && true || false }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Check changed files since previous release
+        uses: tj-actions/changed-files@v45
+        id: changed-files
+        if: ${{ env.RELEASE_VERSION == '' }}
+        with:
+          base_sha: ${{ env.PREVIOUS_TAG_SHA }}
+          files_yaml: |
+            source_code:
+              lib/**
+              tests/**
+              .github/workflows/build.yaml
+
+      - name: Check if a new release would be required
+        env:
+          RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
+          CHANGED_FILES: ${{ steps.changed-files.outputs.source_code_any_changed }}
+          DELETED_FILES: ${{ steps.changed-files.outputs.source_code_any_deleted }}
+          MODIFIED_FILES: ${{ steps.changed-files.outputs.source_code_any_modified }}
+        run: |
+          PUBLISH_RELEASE=false
+          if [[ -n "$RELEASE_VERSION" ]] || \
+               [[ "$CHANGED_FILES" == "true" ]] || \
+               [[ "$DELETED_FILES" == "true" ]] || \
+               [[ "$MODIFIED_FILES" == "true" ]]; then
+             PUBLISH_RELEASE=true
+          fi
+          echo "PUBLISH_RELEASE=${PUBLISH_RELEASE}" | tee -a "$GITHUB_ENV"
+
+      - name: Generate next release version
+        uses: jveldboom/action-conventional-versioning@v1
+        id: version
+        if: ${{ env.PUBLISH_RELEASE == 'true' && env.RELEASE_VERSION == '' }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          ignore-drafts: true
+          ignore-prereleases: true
+
+      - name: Install ruby
+        uses: ruby/setup-ruby@v1
+        if: ${{ env.PUBLISH_RELEASE == 'true' }}
+        with:
+          ruby-version: 'ruby'
+          bundler-cache: true
+
+      - name: Install dependencies
+        if: ${{ env.PUBLISH_RELEASE == 'true' }}
+        run: |
+          bundle install --jobs 4 --retry 3
+
+      - name: Update and push version bump
+        if: ${{ env.PUBLISH_RELEASE == 'true' }}
+        env:
+          RELEASE_VERSION: ${{ env.RELEASE_VERSION != '' && env.RELEASE_VERSION || steps.version.outputs.version }}
+          USER_NAME: ${{ github.actor || 'github-actions' }}
+          USER_EMAIL: ${{ github.actor || 'github-actions' }}@users.noreply.github.com
+        run: |
+          set -e
+
+          git config --local user.name "${USER_NAME}"
+          git config --local user.email "${USER_EMAIL}"
+
+          echo "${RELEASE_VERSION#v}" > lib/omnicli/VERSION
+          bundle update omnicli
+          git add lib/omnicli/VERSION Gemfile.lock
+
+          git commit -m "chore: 🔖 bump version to ${RELEASE_VERSION}"
+          git push origin main
