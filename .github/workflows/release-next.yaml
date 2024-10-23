@@ -42,7 +42,7 @@ jobs:
             fi
             echo "PREVIOUS_TAG_SHA=${previous_tag_object_sha}" | tee -a "$GITHUB_ENV"
 
-            if [[ -z "$PREVIOUS_TAG_SHA" ]]; then
+            if [[ -z "$previous_tag_object_sha" ]]; then
               echo >&2 "Failed to identify last release commit"
               exit 1
             fi
