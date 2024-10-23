@@ -61,7 +61,6 @@ jobs:
             source_code:
               lib/**
               tests/**
-              .github/workflows/build.yaml
 
       - name: Check if a new release would be required
         env:

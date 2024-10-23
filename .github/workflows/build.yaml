@@ -268,4 +268,3 @@ jobs:
           # or pre-release (none of our releases are)
           allowUpdates: true
           updateOnlyUnreleased: true
-
