@@ -30,10 +30,17 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          LAST_RELEASE_TAG=$(gh --repo "${REPOSITORY}" release list --limit 1 --json tagName | jq -r '.[0].tagName')
-          if [[ "$LAST_RELEASE_TAG" != "null" ]]; then
-            PREVIOUS_TAG_SHA=$(gh api "repos/${REPOSITORY}/git/ref/tags/${LAST_RELEASE_TAG}" --jq '.object.sha')
-            echo "PREVIOUS_TAG_SHA=${PREVIOUS_TAG_SHA}" | tee -a "$GITHUB_ENV"
+          set -e
+
+          last_release_tag=$(gh --repo "${REPOSITORY}" release list --limit 1 --json tagName | jq -r '.[0].tagName')
+          if [[ "$last_release_tag" != "null" ]]; then
+            previous_tag_data=$(gh api "repos/${REPOSITORY}/git/ref/tags/${last_release_tag}")
+            previous_tag_object_type=$(echo "$previous_tag_data" | jq -r '.object.type')
+            previous_tag_object_sha=$(echo "$previous_tag_data" | jq -r '.object.sha')
+            if [[ "$previous_tag_object_type" == "tag" ]]; then
+              previous_tag_object_sha=$(gh api "repos/${REPOSITORY}/git/tags/${previous_tag_object_sha}" --jq '.object.sha')
+            fi
+            echo "PREVIOUS_TAG_SHA=${previous_tag_object_sha}" | tee -a "$GITHUB_ENV"
 
             if [[ -z "$PREVIOUS_TAG_SHA" ]]; then
               echo >&2 "Failed to identify last release commit"
