@@ -42,7 +42,8 @@ commands:
       # Build the package
       bundle exec rake build
       # Remove the version file
-      rm lib/omnicli/VERSION
+      git checkout lib/omnicli/VERSION
+      bundle install
 
   publish:
     desc: Publish the package
@@ -70,4 +71,5 @@ commands:
       # Build and release the package
       bundle exec rake release
       # Remove the version file
-      rm lib/omnicli/VERSION
+      git checkout lib/omnicli/VERSION
+      bundle install
