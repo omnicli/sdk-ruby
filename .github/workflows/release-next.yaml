@@ -66,8 +66,8 @@ jobs:
           base_sha: ${{ env.PREVIOUS_TAG_SHA }}
           files_yaml: |
             source_code:
-              lib/**
-              tests/**
+              - 'lib/**'
+              - 'tests/**'
 
       - name: Check if a new release would be required
         env:
