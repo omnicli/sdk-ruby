@@ -119,6 +119,7 @@ jobs:
           git config --local user.email "${USER_EMAIL}"
 
           echo "${RELEASE_VERSION#v}" > lib/omnicli/VERSION
+          bundle config --local frozen false
           bundle update omnicli
           git add lib/omnicli/VERSION Gemfile.lock
 
