@@ -47,8 +47,6 @@ jobs:
 
       - name: Checkout current commit
         uses: "actions/checkout@v4"
-        with:
-          fetch-tags: true
 
       - name: Get the changed files that would require tests
         id: changed-files
@@ -78,11 +76,14 @@ jobs:
 
       - name: Check if we need to publish a release
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -e
 
-          # Get last tag starting by `v`
-          last_tag=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo 'null')
+          # Get last release tag from gh
+          last_tag=$(gh api "repos/${REPOSITORY}/releases/latest" --jq '.tag_name' 2>/dev/null || echo 'null')
           last_tag_version=${last_tag#v}
           echo "last_tag_version=${last_tag_version}"
 
