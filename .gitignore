@@ -4,6 +4,3 @@
 
 # Package directory
 /pkg/
-
-# VERSION file
-/lib/omnicli/VERSION
