@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    omnicli (0.0.0)
+    omnicli (0.0.1)
 
 GEM
   remote: https://rubygems.org/
