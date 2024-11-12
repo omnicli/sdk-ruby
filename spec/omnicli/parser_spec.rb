@@ -138,6 +138,29 @@ RSpec.describe OmniCli::Parser do
       end
     end
 
+    context "with grouped occurrences" do
+      let(:env) do
+        {
+          "OMNI_ARG_LIST" => "words",
+          "OMNI_ARG_WORDS_TYPE" => "str/3/3",
+          "OMNI_ARG_WORDS_TYPE_0" => "str/2",
+          "OMNI_ARG_WORDS_VALUE_0_0" => "hello",
+          "OMNI_ARG_WORDS_VALUE_0_1" => "world",
+          "OMNI_ARG_WORDS_TYPE_1" => "str/1",
+          "OMNI_ARG_WORDS_VALUE_1_0" => "foo",
+          "OMNI_ARG_WORDS_TYPE_2" => "str/3",
+          "OMNI_ARG_WORDS_VALUE_2_0" => "bob",
+          "OMNI_ARG_WORDS_VALUE_2_1" => "alice",
+          "OMNI_ARG_WORDS_VALUE_2_2" => "eve"
+        }
+      end
+
+      it "handles grouped occurrences with proper nesting" do
+        args = described_class.new.parse!
+        expect(args[:words]).to eq([%w[hello world], %w[foo], %w[bob alice eve]])
+      end
+    end
+
     context "with boolean values" do
       let(:test_cases) do
         {

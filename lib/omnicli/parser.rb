@@ -35,29 +35,34 @@ module OmniCli
       type_info = arg_type(name)
       return nil unless type_info
 
-      base_type, size = type_info
+      base_type, size, group_occurrences = type_info
 
-      if size
-        Array.new(size) { |i| arg_value(name, base_type, i) }
-      else
-        arg_value(name, base_type)
+      return arg_value(name, base_type) unless size
+
+      Array.new(size) do |i|
+        next arg_value(name, base_type, i) unless group_occurrences
+
+        group_size = arg_type(name, i)[1]
+        Array.new(group_size) { |j| arg_value(name, base_type, i, j) }
       end
     end
 
-    def arg_type(name)
-      return nil unless (type_str = ENV.fetch("OMNI_ARG_#{name.upcase}_TYPE", nil))
+    def arg_type(name, index = nil)
+      env_var = ["OMNI_ARG", name.upcase, "TYPE", index].compact.join("_")
+      return nil unless (type_str = ENV.fetch(env_var, nil))
 
-      if type_str.include?("/")
-        base_type, size = type_str.split("/")
-        [base_type, size.to_i]
-      else
-        [type_str, nil]
-      end
+      parts = (type_str.split("/") + [nil, nil]).first(3)
+      base_type, size, group_occurrences = parts
+
+      group_occurrences = !group_occurrences.nil?
+      size = size.to_i if size
+
+      [base_type, size, group_occurrences]
     end
 
-    def arg_value(name, type, index = nil)
-      key = ["OMNI_ARG", name.upcase, "VALUE", index].compact.join("_")
-      value = ENV.fetch(key, nil)
+    def arg_value(name, type, index1 = nil, index2 = nil)
+      env_var = ["OMNI_ARG", name.upcase, "VALUE", index1, index2].compact.join("_")
+      value = ENV.fetch(env_var, nil)
 
       return default_value(type) if value.nil?
 

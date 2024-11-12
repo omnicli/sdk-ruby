@@ -57,9 +57,9 @@ jobs:
         with:
           files_yaml: |
             source_code:
-              lib/**
-              tests/**
-              .github/workflows/build.yaml
+              - 'lib/**'
+              - 'tests/**'
+              - '.github/workflows/build.yaml'
 
       - name: Identify if testing is required
         if: ${{ env.REQUIRES_TESTS != 'true' }}
