@@ -12,6 +12,13 @@ module OmniCli
     end
   end
 
+  # Raised when an invalid type string is encountered
+  class InvalidTypeStringError < Error
+    def initialize(type_str)
+      super("invalid type string: '#{type_str}'")
+    end
+  end
+
   # Base class for invalid value errors
   class InvalidValueError < Error; end
 

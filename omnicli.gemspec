@@ -14,7 +14,9 @@ Gem::Specification.new do |spec|
   spec.license       = "MIT"
   spec.required_ruby_version = Gem::Requirement.new(">= 2.6.0")
 
-  raise "RubyGems 2.0 or newer is required to protect against public gem push vulnerabilities" unless spec.respond_to?(:metadata)
+  unless spec.respond_to?(:metadata)
+    raise "RubyGems 2.0 or newer is required to protect against public gem push vulnerabilities"
+  end
 
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = "https://github.com/omnicli/sdk-ruby"
