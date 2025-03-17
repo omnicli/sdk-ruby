@@ -59,7 +59,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Check changed files since previous release
-        uses: tj-actions/changed-files@v45
+        uses: tj-actions/changed-files@v46
         id: changed-files
         if: ${{ env.RELEASE_VERSION == '' }}
         with:
