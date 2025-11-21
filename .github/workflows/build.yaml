@@ -46,7 +46,7 @@ jobs:
           echo "REQUIRES_TESTS=${REQUIRES_TESTS}" | tee -a "$GITHUB_ENV"
 
       - name: Checkout current commit
-        uses: "actions/checkout@v5"
+        uses: "actions/checkout@v6"
 
       - name: Get the changed files
         id: changed-files
@@ -122,7 +122,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Install ruby
         uses: ruby/setup-ruby@v1
@@ -149,7 +149,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Install ruby
         uses: ruby/setup-ruby@v1
@@ -208,7 +208,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Install ruby
         uses: ruby/setup-ruby@v1
@@ -249,7 +249,7 @@ jobs:
           private-key: ${{ env.PRIVATE_KEY }}
 
       - name: Checkout current commit
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           token: ${{ steps.app-token.outputs.token }}
 
