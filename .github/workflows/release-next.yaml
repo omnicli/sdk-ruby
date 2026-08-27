@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Create application token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         id: app-token
         env:
           APP_ID: ${{ secrets.OMNICLI_APP_ID }}
